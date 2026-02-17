@@ -2,20 +2,25 @@
 
 from transformers import pipeline
 
-_pipeline = None
+from app.config import QA_DEFAULT_MODEL, QA_MODELS
+
+_pipelines: dict[str, pipeline] = {}
 
 EMPTY_CONTEXT_FALLBACK = "No context provided."
 
 
-def _get_pipeline():
-    """Lazy-load and return the QA pipeline."""
-    global _pipeline
-    if _pipeline is None:
-        _pipeline = pipeline(
+def _get_pipeline(model_id: str) -> pipeline:
+    """Lazy-load and return the QA pipeline for the given model id."""
+    global _pipelines
+    if model_id not in _pipelines:
+        model_config = next((m for m in QA_MODELS if m["id"] == model_id), None)
+        if model_config is None:
+            raise ValueError(f"Unknown model id: {model_id}")
+        _pipelines[model_id] = pipeline(
             "question-answering",
-            model="distilbert/distilbert-base-cased-distilled-squad",
+            model=model_config["model"],
         )
-    return _pipeline
+    return _pipelines[model_id]
 
 
 def _normalize_context(context: str | list[str]) -> str:
@@ -28,22 +33,42 @@ def _normalize_context(context: str | list[str]) -> str:
     return ""
 
 
+def list_models() -> list[dict[str, str]]:
+    """Return list of available QA models for the dropdown."""
+    return [{"id": m["id"], "name": m["name"]} for m in QA_MODELS]
+
+
 def answer(question: str, context: str | list[str]) -> str:
-    """Answer a question given context from documents.
+    """Answer a question given context from documents (single-turn, default model)."""
+    return answer_with_history(question, context, [], QA_DEFAULT_MODEL)
+
+
+def answer_with_history(
+    question: str,
+    context: str | list[str],
+    history: list[tuple[str, str]],
+    model_id: str | None = None,
+) -> str:
+    """Answer a question given context and last N Q/A pairs as history.
 
     Args:
         question: The question to answer.
-        context: Either a single context string or a list of document texts
-            (e.g. from session store). Will be concatenated if list.
+        context: Document texts (string or list).
+        history: Last 5 (question, answer) pairs.
+        model_id: QA model config id. Defaults to QA_DEFAULT_MODEL.
 
     Returns:
-        The answer string, or a fallback message if context is empty.
+        The answer string.
     """
+    mid = model_id or QA_DEFAULT_MODEL
     ctx = _normalize_context(context)
-    if not ctx:
+    if history:
+        history_str = "\n".join(f"Q: {q}\nA: {a}" for q, a in history)
+        ctx = f"{ctx}\n\n---\nPrevious Q&A:\n{history_str}"
+    if not ctx or not ctx.strip():
         return EMPTY_CONTEXT_FALLBACK
 
-    pipe = _get_pipeline()
+    pipe = _get_pipeline(mid)
     result = pipe(
         question=question,
         context=ctx,

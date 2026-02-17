@@ -1,13 +1,14 @@
 """Pytest fixtures for the test suite."""
 
+import tempfile
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.router import get_store
+from app.api.router import get_repo
 from app.main import app
-from app.storage.session_store import SessionStore
+from app.storage.chat_repository import ChatRepository
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEST_DOCS = PROJECT_ROOT / "test_docs"
@@ -15,15 +16,17 @@ SAMPLE_PDF = TEST_DOCS / "sample.pdf"
 
 
 @pytest.fixture
-def fresh_store() -> SessionStore:
-    """Return a new SessionStore instance for isolated tests."""
-    return SessionStore()
+def chat_repo() -> ChatRepository:
+    """Return a ChatRepository backed by temp file SQLite."""
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        path = f.name
+    return ChatRepository(db_path=path)
 
 
 @pytest.fixture
-def client(fresh_store: SessionStore) -> TestClient:
-    """Return TestClient with dependency override for fresh SessionStore per test."""
-    app.dependency_overrides[get_store] = lambda: fresh_store
+def client(chat_repo: ChatRepository) -> TestClient:
+    """Return TestClient with dependency override for ChatRepository."""
+    app.dependency_overrides[get_repo] = lambda: chat_repo
     try:
         yield TestClient(app)
     finally:

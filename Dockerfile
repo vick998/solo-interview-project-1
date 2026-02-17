@@ -28,13 +28,13 @@ COPY --from=builder /app/app ./app
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Pre-download models at build time (HuggingFace + EasyOCR)
-RUN python -c "\
-from app.qa.pipeline import _get_pipeline;\
-from app.extraction.ocr import _get_reader;\
-_get_pipeline();\
-_get_reader()\
-"
+# Create data directory for SQLite
+RUN mkdir -p /app/data
+
+# Pre-download all QA models and EasyOCR at build time
+RUN python -c "from app.qa.preload import preload_all; preload_all()"
+
+VOLUME /app/data
 
 EXPOSE 8000
 

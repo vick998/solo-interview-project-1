@@ -3,36 +3,76 @@
 import pytest
 from pydantic import ValidationError
 
-from app.api.schemas import AskRequest, AskResponse, UploadResponse
+from app.api.schemas import (
+    AddUrlsRequest,
+    AskRequest,
+    AskResponse,
+    CreateChatRequest,
+    DocumentEnabledRequest,
+    UploadResponse,
+)
 
 
 def test_ask_request_valid() -> None:
-    """AskRequest accepts valid question and session_id."""
-    req = AskRequest(question="What is X?", session_id="s1")
+    """AskRequest accepts valid question."""
+    req = AskRequest(question="What is X?")
     assert req.question == "What is X?"
-    assert req.session_id == "s1"
+    assert req.document_ids is None
+    assert req.model_id is None
+
+
+def test_ask_request_with_optionals() -> None:
+    """AskRequest accepts document_ids and model_id."""
+    req = AskRequest(
+        question="What?",
+        document_ids=["id1"],
+        model_id="distilbert",
+    )
+    assert req.document_ids == ["id1"]
+    assert req.model_id == "distilbert"
 
 
 def test_ask_request_missing_question_raises() -> None:
     """AskRequest missing question raises ValidationError."""
     with pytest.raises(ValidationError):
-        AskRequest(session_id="s1")
-
-
-def test_ask_request_missing_session_id_raises() -> None:
-    """AskRequest missing session_id raises ValidationError."""
-    with pytest.raises(ValidationError):
-        AskRequest(question="What?")
-
-
-def test_upload_response_valid() -> None:
-    """UploadResponse has message and documents_added."""
-    resp = UploadResponse(message="OK", documents_added=3)
-    assert resp.message == "OK"
-    assert resp.documents_added == 3
+        AskRequest()
 
 
 def test_ask_response_valid() -> None:
-    """AskResponse has answer field."""
-    resp = AskResponse(answer="The answer is 42")
-    assert resp.answer == "The answer is 42"
+    """AskResponse has answer and model_used."""
+    resp = AskResponse(answer="42", model_used="distilbert")
+    assert resp.answer == "42"
+    assert resp.model_used == "distilbert"
+
+
+def test_upload_response_valid() -> None:
+    """UploadResponse has document_ids and optional failed."""
+    resp = UploadResponse(document_ids=["id1", "id2"])
+    assert resp.document_ids == ["id1", "id2"]
+    assert resp.failed is None
+
+    resp2 = UploadResponse(
+        document_ids=["id1"],
+        failed=[{"filename_or_url": "x.pdf", "error": "failed"}],
+    )
+    assert resp2.failed == [{"filename_or_url": "x.pdf", "error": "failed"}]
+
+
+def test_create_chat_request_optional_title() -> None:
+    """CreateChatRequest has optional title."""
+    req = CreateChatRequest()
+    assert req.title is None
+    req2 = CreateChatRequest(title="My Chat")
+    assert req2.title == "My Chat"
+
+
+def test_add_urls_request() -> None:
+    """AddUrlsRequest has urls list."""
+    req = AddUrlsRequest(urls=["https://example.com/a.pdf"])
+    assert req.urls == ["https://example.com/a.pdf"]
+
+
+def test_document_enabled_request() -> None:
+    """DocumentEnabledRequest has enabled bool."""
+    req = DocumentEnabledRequest(enabled=True)
+    assert req.enabled is True

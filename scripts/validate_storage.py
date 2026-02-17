@@ -1,57 +1,72 @@
-"""Validate session storage (add, get, isolation, SessionNotFoundError)."""
+"""Validate chat storage (create, add docs, get, add message, etc.)."""
 
+import asyncio
 import sys
+import tempfile
 from pathlib import Path
 
 # Add project root to path
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
-from app.storage.exceptions import SessionNotFoundError
-from app.storage.session_store import SessionStore
+from app.storage.chat_repository import ChatRepository
 
 
-def main() -> int:
+async def main() -> int:
     """Run storage validation. Returns 0 on success, 1 on failure."""
     errors = []
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        path = f.name
 
-    store = SessionStore()
+    repo = ChatRepository(db_path=path)
+    await repo.ensure_init()
 
-    # Add and retrieve
-    store.add_documents("s1", ["doc1 text", "doc2 text"])
-    docs = store.get_documents("s1")
-    if docs != ["doc1 text", "doc2 text"]:
-        errors.append(f"Expected ['doc1 text', 'doc2 text'], got {docs}")
+    # Create chat and add documents
+    chat_id = await repo.create_chat()
+    doc_ids = await repo.add_documents(
+        chat_id,
+        [
+            {
+                "source_type": "file",
+                "source_path_or_url": "doc1.pdf",
+                "display_name": "doc1.pdf",
+                "extracted_text": "doc1 text",
+                "enabled": True,
+            },
+            {
+                "source_type": "file",
+                "source_path_or_url": "doc2.pdf",
+                "display_name": "doc2.pdf",
+                "extracted_text": "doc2 text",
+                "enabled": True,
+            },
+        ],
+    )
+    if len(doc_ids) != 2:
+        errors.append(f"Expected 2 doc ids, got {doc_ids}")
     else:
-        print("OK: Add and retrieve documents")
+        print("OK: Add documents returns ids")
 
-    # Append behavior
-    store.add_documents("s1", ["doc3 text"])
-    docs = store.get_documents("s1")
-    if docs != ["doc1 text", "doc2 text", "doc3 text"]:
-        errors.append(f"Expected append, got {docs}")
+    docs = await repo.get_documents(chat_id)
+    if len(docs) != 2 or docs[0]["extracted_text"] != "doc1 text":
+        errors.append(f"Expected 2 docs with correct text, got {docs}")
     else:
-        print("OK: Append behavior")
+        print("OK: Get documents returns added docs")
 
-    # Session isolation
-    store.add_documents("s2", ["only in s2"])
-    s1_docs = store.get_documents("s1")
-    s2_docs = store.get_documents("s2")
-    if "only in s2" in s1_docs:
-        errors.append("s2 docs visible in s1 (isolation broken)")
-    elif s2_docs != ["only in s2"]:
-        errors.append(f"s2 expected ['only in s2'], got {s2_docs}")
+    # Add message
+    await repo.add_message(chat_id, "Q1", "A1", "distilbert")
+    msgs = await repo.get_messages(chat_id)
+    if len(msgs) != 1 or msgs[0]["question"] != "Q1":
+        errors.append(f"Expected 1 message, got {msgs}")
     else:
-        print("OK: Session isolation")
+        print("OK: Add and get message")
 
-    # Unknown session raises SessionNotFoundError
-    try:
-        store.get_documents("nonexistent")
-        errors.append("Expected SessionNotFoundError for unknown session")
-    except SessionNotFoundError:
-        print("OK: Unknown session raises SessionNotFoundError")
-    except Exception as e:
-        errors.append(f"Wrong exception for unknown session: {e}")
+    # Unknown chat returns None
+    chat = await repo.get_chat("00000000-0000-0000-0000-000000000000")
+    if chat is not None:
+        errors.append("Expected None for unknown chat")
+    else:
+        print("OK: Unknown chat returns None")
 
     if errors:
         for err in errors:
@@ -62,4 +77,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(asyncio.run(main()))
