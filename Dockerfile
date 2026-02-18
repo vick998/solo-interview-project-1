@@ -1,4 +1,16 @@
-# Stage 1 — Builder
+# Stage 0 — Frontend builder
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /app/frontend
+
+COPY frontend/package*.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 1 — Python builder
 FROM python:3.12-slim AS builder
 
 # Install uv
@@ -26,15 +38,19 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/app ./app
 
+# Copy built frontend from frontend-builder
+COPY --from=frontend-builder /app/frontend/dist ./static
+
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Create data directory for SQLite
-RUN mkdir -p /app/data
+# Create data and uploads directories
+RUN mkdir -p /app/data /app/uploads
 
-# Pre-download all QA models and EasyOCR at build time
+# Pre-download EasyOCR at build time (QA uses HF Inference API at runtime)
 RUN python -c "from app.qa.preload import preload_all; preload_all()"
 
 VOLUME /app/data
+VOLUME /app/uploads
 
 EXPOSE 8000
 

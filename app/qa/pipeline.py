@@ -1,26 +1,38 @@
-"""QA pipeline using Hugging Face transformers."""
+"""QA pipeline using Hugging Face Inference API."""
 
-from transformers import pipeline
+import logging
+import os
+import time
+
+from huggingface_hub import InferenceClient
+from huggingface_hub.utils import HfHubHTTPError
 
 from app.config import QA_DEFAULT_MODEL, QA_MODELS
 
-_pipelines: dict[str, pipeline] = {}
-
+logger = logging.getLogger(__name__)
 EMPTY_CONTEXT_FALLBACK = "No context provided."
 
+# Retry config for transient 503/504 from serverless inference (cold start, overload)
+MAX_RETRIES = 3
+RETRY_BACKOFF_BASE = 2  # seconds
+# HF router times out at ~2 min; use shorter client timeout to fail fast with InferenceTimeoutError
+# instead of waiting for server 504. Increase if cold starts are consistently slower.
+INFERENCE_TIMEOUT = 120  # seconds
 
-def _get_pipeline(model_id: str) -> pipeline:
-    """Lazy-load and return the QA pipeline for the given model id."""
-    global _pipelines
-    if model_id not in _pipelines:
-        model_config = next((m for m in QA_MODELS if m["id"] == model_id), None)
-        if model_config is None:
-            raise ValueError(f"Unknown model id: {model_id}")
-        _pipelines[model_id] = pipeline(
-            "question-answering",
-            model=model_config["model"],
+
+def _get_client() -> InferenceClient:
+    """Return InferenceClient for HF Inference API."""
+    token = os.environ.get("HF_TOKEN")
+    if not token or not token.strip():
+        raise ValueError(
+            "HF_TOKEN environment variable is required for QA. "
+            "Set it in .env or pass -e HF_TOKEN=... when running."
         )
-    return _pipelines[model_id]
+    return InferenceClient(
+        provider="hf-inference",
+        api_key=token,
+        timeout=INFERENCE_TIMEOUT,
+    )
 
 
 def _normalize_context(context: str | list[str]) -> str:
@@ -68,12 +80,63 @@ def answer_with_history(
     if not ctx or not ctx.strip():
         return EMPTY_CONTEXT_FALLBACK
 
-    pipe = _get_pipeline(mid)
-    result = pipe(
-        question=question,
-        context=ctx,
-        max_seq_len=384,
-        doc_stride=128,
-        handle_impossible_answer=True,
+    model_config = next((m for m in QA_MODELS if m["id"] == mid), None)
+    if model_config is None:
+        raise ValueError(f"Unknown model id: {mid}")
+
+    logger.info(
+        "inference_start model_id=%s model=%s context_len=%d question_len=%d",
+        mid,
+        model_config["model"],
+        len(ctx),
+        len(question),
     )
-    return result.get("answer", EMPTY_CONTEXT_FALLBACK)
+
+    client = _get_client()
+    for attempt in range(MAX_RETRIES):
+        try:
+            result = client.question_answering(
+                question=question,
+                context=ctx,
+                model=model_config["model"],
+                max_seq_len=384,
+                doc_stride=128,
+                handle_impossible_answer=True,
+            )
+            break
+        except HfHubHTTPError as e:
+            if attempt < MAX_RETRIES - 1 and e.response.status_code in (503, 504):
+                wait = RETRY_BACKOFF_BASE ** attempt
+                logger.warning(
+                    "inference_retry model_id=%s attempt=%d status=%d wait_s=%d",
+                    mid,
+                    attempt + 1,
+                    e.response.status_code,
+                    wait,
+                )
+                time.sleep(wait)
+                continue
+            logger.error(
+                "inference_failed model_id=%s status=%d error=%s",
+                mid,
+                e.response.status_code,
+                str(e),
+            )
+            raise
+
+    if not result:
+        logger.info("inference_done model_id=%s answer=empty", mid)
+        return EMPTY_CONTEXT_FALLBACK
+    if isinstance(result, list) and len(result) > 0:
+        answer_text = result[0].get("answer", EMPTY_CONTEXT_FALLBACK)
+    elif isinstance(result, dict):
+        answer_text = result.get("answer", EMPTY_CONTEXT_FALLBACK)
+    else:
+        answer_text = EMPTY_CONTEXT_FALLBACK
+
+    logger.info(
+        "inference_done model_id=%s answer_len=%d",
+        mid,
+        len(answer_text),
+    )
+    return answer_text

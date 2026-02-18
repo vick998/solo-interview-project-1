@@ -33,6 +33,10 @@ test_docs/
 .envrc
 .cursorignore
 
+# Frontend build artifacts (built in container)
+frontend/node_modules/
+frontend/dist/
+
 # Build artifacts
 *.egg-info/
 dist/

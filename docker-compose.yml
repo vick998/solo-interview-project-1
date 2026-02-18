@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - app-data:/app/data
+      - app-uploads:/app/uploads
+
+volumes:
+  app-data:
+  app-uploads:

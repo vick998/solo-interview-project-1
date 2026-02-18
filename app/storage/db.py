@@ -1,11 +1,10 @@
 """SQLite database setup and initialization."""
 
-import os
 from pathlib import Path
 
 import aiosqlite
 
-DB_PATH = "./data/chat.db"
+from app.config import DB_PATH
 
 INIT_SQL = """
 CREATE TABLE IF NOT EXISTS chats (
@@ -33,6 +32,7 @@ CREATE TABLE IF NOT EXISTS messages (
     question TEXT NOT NULL,
     answer TEXT NOT NULL,
     model_used TEXT NOT NULL,
+    inference_time REAL,
     created_at TEXT NOT NULL,
     FOREIGN KEY (chat_id) REFERENCES chats(id)
 );
@@ -43,8 +43,8 @@ CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id);
 
 
 def _ensure_data_dir(path: str | None = None) -> None:
-    """Create ./data directory if missing (for local dev). Skip for :memory:."""
-    p = path or DB_PATH
+    """Create data directory if missing (for local dev). Skip for :memory:."""
+    p = path if path is not None else DB_PATH
     if p.startswith(":memory") or p.startswith("file::memory"):
         return
     data_dir = Path(p).parent
@@ -67,5 +67,11 @@ async def init_db(db_path: str | None = None) -> None:
     try:
         await conn.executescript(INIT_SQL)
         await conn.commit()
+        # Migration: add inference_time to existing messages tables
+        try:
+            await conn.execute("ALTER TABLE messages ADD COLUMN inference_time REAL")
+            await conn.commit()
+        except Exception:
+            pass  # Column already exists
     finally:
         await conn.close()

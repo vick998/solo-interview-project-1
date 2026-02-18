@@ -203,6 +203,7 @@ class ChatRepository:
         question: str,
         answer: str,
         model_used: str,
+        inference_time: float | None = None,
     ) -> str:
         """Add a message. Returns message id."""
         msg_id = _uuid()
@@ -210,9 +211,9 @@ class ChatRepository:
         conn = await self._conn()
         try:
             await conn.execute(
-                """INSERT INTO messages (id, chat_id, question, answer, model_used, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (msg_id, chat_id, question, answer, model_used, now),
+                """INSERT INTO messages (id, chat_id, question, answer, model_used, inference_time, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (msg_id, chat_id, question, answer, model_used, inference_time, now),
             )
             await conn.execute(
                 "UPDATE chats SET updated_at = ? WHERE id = ?",
@@ -233,9 +234,9 @@ class ChatRepository:
         try:
             if limit:
                 cursor = await conn.execute(
-                    """SELECT id, chat_id, question, answer, model_used, created_at
+                    """SELECT id, chat_id, question, answer, model_used, inference_time, created_at
                        FROM (
-                         SELECT id, chat_id, question, answer, model_used, created_at
+                         SELECT id, chat_id, question, answer, model_used, inference_time, created_at
                          FROM messages WHERE chat_id = ?
                          ORDER BY created_at DESC LIMIT ?
                        ) ORDER BY created_at ASC""",
@@ -243,7 +244,7 @@ class ChatRepository:
                 )
             else:
                 cursor = await conn.execute(
-                    """SELECT id, chat_id, question, answer, model_used, created_at
+                    """SELECT id, chat_id, question, answer, model_used, inference_time, created_at
                        FROM messages WHERE chat_id = ?
                        ORDER BY created_at ASC""",
                     (chat_id,),
@@ -256,7 +257,8 @@ class ChatRepository:
                     "question": r[2],
                     "answer": r[3],
                     "model_used": r[4],
-                    "created_at": r[5],
+                    "inference_time": r[5],
+                    "created_at": r[6],
                 }
                 for r in rows
             ]

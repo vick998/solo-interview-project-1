@@ -28,6 +28,7 @@ class AskResponse(BaseModel):
 
     answer: str
     model_used: str
+    inference_time: float | None = None
 
 
 class UploadResponse(BaseModel):

@@ -1,18 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
-
-const API_BASE = "";
-
-async function api(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || JSON.stringify(err));
-  }
-  return res.json();
-}
+import { useState, useEffect, useCallback, useRef } from "react";
+import { api } from "./api.js";
+import { ChatSidebar } from "./ChatSidebar.jsx";
+import { ChatHeader } from "./ChatHeader.jsx";
+import { MessageList } from "./MessageList.jsx";
+import { InputArea } from "./InputArea.jsx";
+import { DocumentSidebar } from "./DocumentSidebar.jsx";
+import { Toast } from "./Toast.jsx";
+import { UploadModal } from "./UploadModal.jsx";
 
 function App() {
   const [chats, setChats] = useState([]);
@@ -21,7 +15,18 @@ function App() {
   const [selectedModel, setSelectedModel] = useState("");
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
-  const [urlInput, setUrlInput] = useState("");
+  const [loadingMessage, setLoadingMessage] = useState(null);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [expandedDocId, setExpandedDocId] = useState(null);
+  const [editingChatId, setEditingChatId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [toast, setToast] = useState(null);
+  const editStartTimeRef = useRef(0);
+  const savingTitleRef = useRef(false);
+
+  const showToast = useCallback((msg, type = "error") => {
+    setToast({ message: msg, type });
+  }, []);
 
   const loadChats = useCallback(async () => {
     const list = await api("/chats");
@@ -40,174 +45,186 @@ function App() {
   }, [loadChats, loadModels]);
 
   const createChat = async () => {
-    const { id } = await api("/chats", { method: "POST", body: JSON.stringify({}) });
-    await loadChats();
-    setCurrentChat({ id, documents: [], messages: [] });
+    try {
+      const { id } = await api("/chats", { method: "POST", body: JSON.stringify({}) });
+      await loadChats();
+      setCurrentChat({ id, documents: [], messages: [] });
+    } catch (err) {
+      showToast(err.message);
+    }
   };
 
-  const loadChat = async (id) => {
+  const loadChat = useCallback(async (id) => {
     const chat = await api(`/chats/${id}`);
     setCurrentChat(chat);
-  };
-
-  const uploadFiles = async (e) => {
-    if (!currentChat?.id) return;
-    const files = e.target.files;
-    if (!files?.length) return;
-    const form = new FormData();
-    for (const f of files) form.append("files", f);
-    const res = await fetch(`/chats/${currentChat.id}/upload`, {
-      method: "POST",
-      body: form,
-    });
-    if (!res.ok) throw new Error((await res.json()).detail);
-    const data = await res.json();
-    await loadChat(currentChat.id);
-  };
-
-  const addUrl = async () => {
-    if (!currentChat?.id || !urlInput.trim()) return;
-    await api(`/chats/${currentChat.id}/add-urls`, {
-      method: "POST",
-      body: JSON.stringify({ urls: [urlInput.trim()] }),
-    });
-    setUrlInput("");
-    await loadChat(currentChat.id);
-  };
+  }, []);
 
   const ask = async () => {
     if (!currentChat?.id || !question.trim()) return;
     const enabledIds = currentChat.documents?.filter((d) => d.enabled).map((d) => d.id) ?? [];
     if (!enabledIds.length) {
-      alert("Upload at least one document and ensure it is enabled.");
+      showToast("Upload at least one document and ensure it is enabled.");
       return;
     }
+    const trimmedQuestion = question.trim();
+    setLoadingMessage({ question: trimmedQuestion });
+    setQuestion("");
     setLoading(true);
     try {
-      const res = await api(`/chats/${currentChat.id}/ask`, {
+      await api(`/chats/${currentChat.id}/ask`, {
         method: "POST",
         body: JSON.stringify({
-          question: question.trim(),
+          question: trimmedQuestion,
           document_ids: enabledIds,
           model_id: selectedModel || undefined,
         }),
       });
-      setQuestion("");
       await loadChat(currentChat.id);
+      setLoadingMessage(null);
     } catch (err) {
-      alert(err.message);
+      showToast(err.message);
+      setQuestion(trimmedQuestion);
+      setLoadingMessage(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const toggleDoc = async (docId, enabled) => {
+  const selectDoc = async (docId) => {
     if (!currentChat?.id) return;
-    await api(`/chats/${currentChat.id}/documents/${docId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ enabled }),
-    });
-    await loadChat(currentChat.id);
+    const doc = currentChat.documents?.find((d) => d.id === docId);
+    if (!doc) return;
+    const newEnabled = !doc.enabled;
+    try {
+      await api(`/chats/${currentChat.id}/documents/${docId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: newEnabled }),
+      });
+      await loadChat(currentChat.id);
+    } catch (err) {
+      showToast(err.message);
+    }
+  };
+
+  const toggleDocExpand = (docId) => {
+    setExpandedDocId((prev) => (prev === docId ? null : docId));
+  };
+
+  const handleUploadSuccess = useCallback(() => {
+    if (currentChat?.id) loadChat(currentChat.id);
+  }, [currentChat?.id, loadChat]);
+
+  const startEditingChat = (e, chat) => {
+    e.stopPropagation();
+    editStartTimeRef.current = Date.now();
+    setEditingChatId(chat.id);
+    setEditingTitle(chat.title || "New chat");
+  };
+
+  const saveChatTitle = async () => {
+    if (!editingChatId) return;
+    if (Date.now() - editStartTimeRef.current < 200) return;
+    if (savingTitleRef.current) return;
+    savingTitleRef.current = true;
+    const trimmed = editingTitle.trim() || "New chat";
+    try {
+      await api(`/chats/${editingChatId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ title: trimmed }),
+      });
+      await loadChats();
+      if (currentChat?.id === editingChatId) {
+        setCurrentChat((prev) => (prev ? { ...prev, title: trimmed } : null));
+      }
+    } catch (err) {
+      showToast(err.message);
+    } finally {
+      savingTitleRef.current = false;
+      setEditingChatId(null);
+      setEditingTitle("");
+    }
+  };
+
+  const cancelEditingChat = () => {
+    setEditingChatId(null);
+    setEditingTitle("");
+  };
+
+  const handleTitleKeyDown = (e) => {
+    if (e.key === "Enter") saveChatTitle();
+    if (e.key === "Escape") cancelEditingChat();
   };
 
   return (
-    <div style={{ display: "flex", width: "100%", minHeight: "100vh" }}>
-      <aside style={{ width: 220, padding: 16, borderRight: "1px solid #333", background: "#16213e" }}>
-        <button onClick={createChat} style={{ width: "100%", padding: 10, marginBottom: 16, cursor: "pointer" }}>
-          New chat
-        </button>
-        {chats.map((c) => (
-          <div
-            key={c.id}
-            onClick={() => loadChat(c.id)}
-            style={{
-              padding: 10,
-              marginBottom: 4,
-              cursor: "pointer",
-              background: currentChat?.id === c.id ? "#0f3460" : "transparent",
-              borderRadius: 6,
-            }}
-          >
-            {c.title || "New chat"}
-          </div>
-        ))}
-      </aside>
+    <div className="app-layout">
+      <ChatSidebar
+        chats={chats}
+        currentChat={currentChat}
+        editingChatId={editingChatId}
+        editingTitle={editingTitle}
+        onNewChat={createChat}
+        onSelectChat={loadChat}
+        onStartEdit={startEditingChat}
+        onTitleChange={setEditingTitle}
+        onSaveTitle={saveChatTitle}
+        onCancelEdit={cancelEditingChat}
+        onTitleKeyDown={handleTitleKeyDown}
+      />
 
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", padding: 16 }}>
+      <main className="main-content">
         {!currentChat ? (
           <p>Create or select a chat.</p>
         ) : (
           <>
-            <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
-              {(currentChat.messages || []).map((m) => (
-                <div key={m.id} style={{ marginBottom: 16 }}>
-                  <div style={{ color: "#aaa", fontSize: 12 }}>Q: {m.question}</div>
-                  <div>A: {m.answer}</div>
-                  {m.model_used && <div style={{ color: "#666", fontSize: 11 }}>Model: {m.model_used}</div>}
-                </div>
-              ))}
-            </div>
-            <div>
-              <input
-                type="text"
-                placeholder="Ask a question..."
-                value={question}
-                onChange={(e) => setQuestion(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && ask()}
-                style={{ width: "100%", padding: 12, marginBottom: 8 }}
-              />
-              <div style={{ display: "flex", gap: 8 }}>
-                <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg" onChange={uploadFiles} />
-                <input
-                  type="text"
-                  placeholder="Add URL..."
-                  value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addUrl()}
-                  style={{ flex: 1, padding: 8 }}
-                />
-                <button onClick={addUrl}>Add URL</button>
-                <button onClick={ask} disabled={loading}>
-                  {loading ? "..." : "Ask"}
-                </button>
-              </div>
-            </div>
+            <ChatHeader
+              chat={currentChat}
+              editingChatId={editingChatId}
+              editingTitle={editingTitle}
+              onTitleChange={setEditingTitle}
+              onSaveTitle={saveChatTitle}
+              onStartEdit={startEditingChat}
+              onCancelEdit={cancelEditingChat}
+              onTitleKeyDown={handleTitleKeyDown}
+            />
+            <MessageList
+              messages={currentChat.messages}
+              loadingMessage={loadingMessage}
+            />
+            <InputArea
+              question={question}
+              onQuestionChange={setQuestion}
+              onAsk={ask}
+              onOpenUpload={() => setUploadModalOpen(true)}
+              loading={loading}
+            />
           </>
         )}
       </main>
 
-      <aside style={{ width: 260, padding: 16, borderLeft: "1px solid #333", background: "#16213e" }}>
-        <h3 style={{ marginTop: 0 }}>Containing</h3>
-        <div style={{ marginBottom: 16 }}>
-          <label>Model</label>
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            style={{ width: "100%", padding: 8, marginTop: 4 }}
-          >
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label>Documents</label>
-          {(currentChat?.documents || []).map((d) => (
-            <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-              <input
-                type="checkbox"
-                checked={!!d.enabled}
-                onChange={(e) => toggleDoc(d.id, e.target.checked)}
-              />
-              <span style={{ fontSize: 12, overflow: "hidden", textOverflow: "ellipsis" }} title={d.display_name}>
-                {d.display_name}
-              </span>
-            </div>
-          ))}
-        </div>
-      </aside>
+      <DocumentSidebar
+        models={models}
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
+        documents={currentChat?.documents}
+        expandedDocId={expandedDocId}
+        onSelectDoc={selectDoc}
+        onToggleExpand={toggleDocExpand}
+      />
+
+      <UploadModal
+        isOpen={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        chatId={currentChat?.id}
+        onUploadSuccess={handleUploadSuccess}
+      />
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onDismiss={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }

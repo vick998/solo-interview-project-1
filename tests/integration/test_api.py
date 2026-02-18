@@ -119,7 +119,8 @@ def test_get_qa_models_returns_list(client: TestClient) -> None:
     data = response.json()
     assert isinstance(data, list)
     assert len(data) >= 1
-    assert data[0]["id"] == "distilbert"
+    ids = [m["id"] for m in data]
+    assert "distilbert" in ids
     assert "name" in data[0]
 
 

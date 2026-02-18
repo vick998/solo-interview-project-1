@@ -1,8 +1,15 @@
-"""Slow integration tests for real QA model."""
+"""Slow integration tests for real QA model (requires HF_TOKEN and network)."""
+
+import os
 
 import pytest
 
 from app.qa.pipeline import answer
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("HF_TOKEN"),
+    reason="HF_TOKEN required for real QA tests",
+)
 
 
 @pytest.mark.slow
