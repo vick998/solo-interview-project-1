@@ -29,7 +29,7 @@ uv run python benchmark/run_benchmark.py
 uv run python benchmark/run_benchmark.py --append
 
 # Run only specific model(s)
-uv run python benchmark/run_benchmark.py -m tinybert -m distilbert
+uv run python benchmark/run_benchmark.py -m tinybert -m deberta-v3-base
 
 # Custom output paths
 uv run python benchmark/run_benchmark.py -o my_results.csv --plot chart.png

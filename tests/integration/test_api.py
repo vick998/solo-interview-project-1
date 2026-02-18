@@ -119,7 +119,7 @@ def test_ask_with_docs_returns_200(
         f"/chats/{chat_id}/ask",
         json={
             "question": "What is the expected keyword?",
-            "model_id": "distilbert",
+            "model_id": "tinybert",
         },
     )
     assert response.status_code == 200
@@ -137,7 +137,7 @@ def test_get_qa_models_returns_list(client: TestClient) -> None:
     assert isinstance(data, list)
     assert len(data) >= 1
     ids = [m["id"] for m in data]
-    assert "distilbert" in ids
+    assert "tinybert" in ids
     assert "name" in data[0]
 
 

@@ -52,7 +52,7 @@ def test_answer_with_history_includes_history_in_context() -> None:
             "What is its capital?",
             "France is a country.",
             [("What country?", "France")],
-            model_id="distilbert",
+            model_id="tinybert",
         )
         assert result == "Paris"
         call_kwargs = mock_client.question_answering.call_args.kwargs
@@ -68,4 +68,4 @@ def test_list_models_returns_id_and_name() -> None:
     assert "id" in models[0]
     assert "name" in models[0]
     ids = [m["id"] for m in models]
-    assert "distilbert" in ids
+    assert "tinybert" in ids

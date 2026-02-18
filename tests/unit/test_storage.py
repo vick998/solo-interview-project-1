@@ -116,12 +116,12 @@ async def test_add_message_stores_and_retrieves(repo: ChatRepository) -> None:
     """add_message stores message and get_messages returns it."""
     await repo.ensure_init()
     chat_id = await repo.create_chat()
-    await repo.add_message(chat_id, "Q1", "A1", "distilbert")
+    await repo.add_message(chat_id, "Q1", "A1", "tinybert")
     msgs = await repo.get_messages(chat_id)
     assert len(msgs) == 1
     assert msgs[0]["question"] == "Q1"
     assert msgs[0]["answer"] == "A1"
-    assert msgs[0]["model_used"] == "distilbert"
+    assert msgs[0]["model_used"] == "tinybert"
 
 
 @pytest.mark.asyncio
@@ -130,7 +130,7 @@ async def test_get_messages_limit_returns_last_n(repo: ChatRepository) -> None:
     await repo.ensure_init()
     chat_id = await repo.create_chat()
     for i in range(7):
-        await repo.add_message(chat_id, f"Q{i}", f"A{i}", "distilbert")
+        await repo.add_message(chat_id, f"Q{i}", f"A{i}", "tinybert")
     msgs = await repo.get_messages(chat_id, limit=5)
     assert len(msgs) == 5
     assert msgs[0]["question"] == "Q2"

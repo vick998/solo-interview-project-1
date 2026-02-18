@@ -54,7 +54,7 @@ async def main() -> int:
         print("OK: Get documents returns added docs")
 
     # Add message
-    await repo.add_message(chat_id, "Q1", "A1", "distilbert")
+    await repo.add_message(chat_id, "Q1", "A1", "tinybert")
     msgs = await repo.get_messages(chat_id)
     if len(msgs) != 1 or msgs[0]["question"] != "Q1":
         errors.append(f"Expected 1 message, got {msgs}")

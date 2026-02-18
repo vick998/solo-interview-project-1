@@ -6,7 +6,7 @@ A chat-based document QA application. Upload PDF or image documents (or add URLs
 
 - **Chat-based UI**: Multiple chats with document and message persistence
 - **Document upload**: PDF and images (`.pdf`, `.png`, `.jpg`, `.jpeg`), plus URL ingestion
-- **QA model selection**: Choose from several SQuAD-trained models (TinyBERT, DistilBERT, RoBERTa, BERT Large)
+- **QA model selection**: Choose from several SQuAD-trained models (TinyBERT, RoBERTa, BERT Large)
 - **Frontend**: React + Vite, served from the same origin in production
 
 ## Setup
@@ -140,7 +140,7 @@ curl -X POST "http://localhost:8000/chats/${CHAT_ID}/ask" \
   -d '{"question": "What is the main topic?"}'
 ```
 
-Response: `{"answer": "The main topic is...", "model_used": "distilbert", "inference_time": 0.42}`
+Response: `{"answer": "The main topic is...", "model_used": "tinybert", "inference_time": 0.42}`
 
 ### Health
 
@@ -155,7 +155,7 @@ curl -s http://localhost:8000/health
 
 ### Stack and Tooling
 
-The backend is built with **FastAPI** (async, automatic OpenAPI docs, Pydantic validation), Python 3.12+, and **uv** for dependency management. Storage uses **SQLite** via aiosqlite, with a `ChatRepository` managing chats, documents, and messages. Document extraction relies on **PyMuPDF** for PDFs and **EasyOCR** for images; URL ingestion uses httpx with 10MB size and 30s timeout limits. QA and NER run on the **Hugging Face Inference API** (serverless)—six SQuAD models for QA, and dslim/bert-base-NER for entity extraction, with chunking for long text. The frontend is **React + Vite**, built into the Docker image and served by FastAPI static. The package manager **uv** provides lockfile-based, reproducible builds.
+The backend is built with **FastAPI** (async, automatic OpenAPI docs, Pydantic validation), Python 3.12+, and **uv** for dependency management. Storage uses **SQLite** via aiosqlite, with a `ChatRepository` managing chats, documents, and messages. Document extraction relies on **PyMuPDF** for PDFs and **EasyOCR** for images; URL ingestion uses httpx with 10MB size and 30s timeout limits. QA and NER run on the **Hugging Face Inference API** (serverless)—four SQuAD models for QA, and dslim/bert-base-NER for entity extraction, with chunking for long text. The frontend is **React + Vite**, built into the Docker image and served by FastAPI static. The package manager **uv** provides lockfile-based, reproducible builds.
 
 **This project was built with Cursor.** Code quality is ensured by unit and integration tests, plus ongoing review and testing by the author.
 
@@ -169,7 +169,7 @@ The test suite follows the structure described in [plans/comprehensive_pytest_te
 
 ### Development Phases
 
-The project began as a simple chat backend: a minimal FastAPI app with a health endpoint, config, and uv for dependencies (Phase 1). Document extraction followed (Phase 2)—PyMuPDF for PDFs, EasyOCR for images, a file-type router, and test documents. Phase 3 added an in-memory storage layer: SessionStore with add/get, session isolation, and SessionNotFoundError for unknown sessions. The QA pipeline (Phase 4) introduced local Hugging Face transformers: DistilBERT, lazy-loaded, with chunking for long context. Phase 5 wired everything into API endpoints: POST /upload (X-Session-ID header) and POST /ask (question + session_id in JSON).
+The project began as a simple chat backend: a minimal FastAPI app with a health endpoint, config, and uv for dependencies (Phase 1). Document extraction followed (Phase 2)—PyMuPDF for PDFs, EasyOCR for images, a file-type router, and test documents. Phase 3 added an in-memory storage layer: SessionStore with add/get, session isolation, and SessionNotFoundError for unknown sessions. The QA pipeline (Phase 4) introduced local Hugging Face transformers: TinyBERT, lazy-loaded, with chunking for long context. Phase 5 wired everything into API endpoints: POST /upload (X-Session-ID header) and POST /ask (question + session_id in JSON).
 
 The next major shift was persistence. The [chat persistence plan](plans/chat_persistence_and_history_0d3716ef.plan.md) replaced in-memory storage with SQLite via aiosqlite. Chats, documents, and messages gained UUIDs; the API was redesigned around GET/POST/PATCH /chats, upload, add-urls, and ask with document_ids and model_id. The frontend started as a barebones "new chat + upload files" UI and evolved into multi-chat, chat history, a QA model dropdown, document toggles in the Containing tab, and URL ingestion.
 
@@ -180,7 +180,7 @@ Initially, models were hosted locally—transformers pipelines and EasyOCR prelo
 | 1. Project scaffold | FastAPI app, `/health`, config, uv | [phase_1_project_scaffold](plans/phase_1_project_scaffold_b9cbaf07.plan.md) |
 | 2. Document extraction | PyMuPDF, EasyOCR, extractor router, test_docs | [phase_2_document_extraction](plans/phase_2_document_extraction_6073692c.plan.md) |
 | 3. Storage layer | In-memory SessionStore, add/get, session isolation | [phase_3_storage_layer](plans/phase_3_storage_layer_2f3ccae9.plan.md) |
-| 4. QA pipeline | Local transformers, DistilBERT, chunking | [phase_4_qa_pipeline](plans/phase_4_qa_pipeline_406aa8a8.plan.md) |
+| 4. QA pipeline | Local transformers, TinyBERT, chunking | [phase_4_qa_pipeline](plans/phase_4_qa_pipeline_406aa8a8.plan.md) |
 | 5. API endpoints | POST /upload, POST /ask, X-Session-ID | [phase_5_api_endpoints](plans/phase_5_api_endpoints_5ac943c1.plan.md) |
 | 6. Docker | Multi-stage Dockerfile, model preload | [phase_6_docker](plans/phase_6_docker_b6e02009.plan.md) |
 | Chat persistence | SQLite, chats/documents/messages, new API | [chat_persistence_and_history](plans/chat_persistence_and_history_0d3716ef.plan.md) |
@@ -188,6 +188,9 @@ Initially, models were hosted locally—transformers pipelines and EasyOCR prelo
 | Frontend | React + Vite, multi-chat, model dropdown, URL | [chat_persistence](plans/chat_persistence_and_history_0d3716ef.plan.md) Phase 5 |
 | NER | Entity extraction at upload, Containing panel | [ner_document_overview](plans/ner_document_overview_cd6b0b50.plan.md) |
 | Test suite | Unit, integration, slow markers | [comprehensive_pytest_test_suite](plans/comprehensive_pytest_test_suite_3c03307d.plan.md) |
+
+### Stack Card
+
 
 | Component | Choice | Rationale |
 |-----------|--------|------------|
@@ -208,19 +211,24 @@ The Hugging Face Inference API client uses a **120-second timeout**. This constr
 | **PyMuPDF (fitz)** | N/A | PDF extraction | Rule-based text extraction; no neural model. Fast, pure Python bindings. |
 | **EasyOCR** | CRAFT ~79MB + CRNN | OCR | CRAFT for text detection, ResNet-based CRNN for recognition. English (`en`). Runs locally; first run downloads ~500MB+. |
 | **dslim/bert-base-NER** | 110M | NER | BERT-base-cased fine-tuned on CoNLL-2003. Entity types: PER, ORG, LOC, MISC. Chunked for long text. |
-| **Intel/dynamic_tinybert** | ~67M | QA | TinyBERT-6L (6 layers, 768 hidden). SQuAD 1.1. Dynamic sequence-length reduction; up to 3.3x speedup vs BERT. |
-| **distilbert-base-cased-distilled-squad** | ~66M | QA | DistilBERT distilled from BERT on SQuAD. Default QA model. 40% fewer params, 60% faster, ~95% of BERT performance. |
-| **deepset/bert-base-uncased-squad2** | 110M | QA | BERT-base on SQuAD 2.0. Handles unanswerable questions. |
+| **Intel/dynamic_tinybert** | ~67M | QA | TinyBERT-6L (6 layers, 768 hidden). SQuAD 1.1. Default QA model. Dynamic sequence-length reduction; up to 3.3x speedup vs BERT. |
 | **deepset/deberta-v3-base-squad2** | 184M | QA | DeBERTa v3 base. Improved attention; strong on SQuAD 2.0. |
 | **deepset/electra-base-squad2** | 110M | QA | ELECTRA-base. Discriminator pre-training; efficient. |
 | **deepset/roberta-large-squad2** | 355M | QA | RoBERTa large. Highest accuracy; slowest. SQuAD 2.0 EM 85.17%, F1 88.35%. |
 
----
+#### Model Latency Profile
 
-## Extras
+The Hugging Face Inference API enforces a **120-second timeout** per request. To inform model selection and document chunking, we benchmark QA inference times across documents of varying length. The chart below plots average inference time (seconds) vs document length (characters) for each QA model.
 
-- **Model Latency Profiling**: The Hugging Face Inference API client uses a **120-second timeout** ([app/hf_client.py](app/hf_client.py), line 7: `INFERENCE_TIMEOUT = 120`). This timeout is a primary factor for design choices—document chunking, model selection, and context length limits are tuned to stay within it. See [benchmark/README.md](benchmark/README.md) for profiling inference times across documents of varying length.
-- **Validation scripts**: [scripts/validate_all.py](scripts/validate_all.py) — storage, extraction, QA checks
+![QA model inference time vs document length](benchmark/inference_histogram.png)
+
+**Low-latency models** (TinyBERT, DeBERTa v3 base, ELECTRA base) stay consistently under ~5 seconds across all document lengths tested (12.5k–45k characters). They are suitable for real-time use with minimal latency impact.
+
+**RoBERTa large** shows a clear trade-off: inference time scales with document length—from ~7s at 13k characters to ~60s+ at 45k characters. It remains within the 120s timeout but is best reserved for shorter documents or when maximum accuracy justifies the wait.
+
+Note: The models in use are public-access; therefore it is not always likely that our benchmark provides an exact result all-round, the latency varies with availiability of compute resources - hinging on whether the model in question is under high-load by other users of the HF Inference platform. One can observe a high or low latency on high parameter or low parameter models, making it somewhat unintuitive as compared to self-hosting, where one observes latency as a function of number of parameters.
+
+The 120-second threshold (red dashed line) is the critical limit; models approaching it risk timeouts. Run the benchmark yourself with `uv run python benchmark/run_benchmark.py` (see [benchmark/README.md](benchmark/README.md)).
 
 ---
 

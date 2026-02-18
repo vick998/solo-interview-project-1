@@ -26,10 +26,10 @@ def test_ask_request_with_optionals() -> None:
     req = AskRequest(
         question="What?",
         document_ids=["id1"],
-        model_id="distilbert",
+        model_id="tinybert",
     )
     assert req.document_ids == ["id1"]
-    assert req.model_id == "distilbert"
+    assert req.model_id == "tinybert"
 
 
 def test_ask_request_missing_question_raises() -> None:
@@ -40,9 +40,9 @@ def test_ask_request_missing_question_raises() -> None:
 
 def test_ask_response_valid() -> None:
     """AskResponse has answer and model_used."""
-    resp = AskResponse(answer="42", model_used="distilbert")
+    resp = AskResponse(answer="42", model_used="tinybert")
     assert resp.answer == "42"
-    assert resp.model_used == "distilbert"
+    assert resp.model_used == "tinybert"
 
 
 def test_upload_response_valid() -> None:
