@@ -26,7 +26,7 @@ uv sync
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will be available at `http://localhost:8000`. Interactive API docs at `http://localhost:8000/docs`.
+API at `http://localhost:8000`.
 
 **Full app with frontend (dev):**
 
@@ -99,7 +99,7 @@ uv run python scripts/validate_all.py
 
 ## API
 
-Full interactive docs at `http://localhost:8000/docs`.
+Interactive docs at `http://localhost:8000/docs`.
 
 ### Chat endpoints
 
@@ -155,25 +155,15 @@ curl -s http://localhost:8000/health
 
 ### Stack and Tooling
 
-The backend is built with **FastAPI** (async, automatic OpenAPI docs, Pydantic validation), Python 3.12+, and **uv** for dependency management. Storage uses **SQLite** via aiosqlite, with a `ChatRepository` managing chats, documents, and messages. Document extraction relies on **PyMuPDF** for PDFs and **EasyOCR** for images; URL ingestion uses httpx with 10MB size and 30s timeout limits. QA and NER run on the **Hugging Face Inference API** (serverless)—four SQuAD models for QA, and dslim/bert-base-NER for entity extraction, with chunking for long text. The frontend is **React + Vite**, built into the Docker image and served by FastAPI static. The package manager **uv** provides lockfile-based, reproducible builds.
-
-**This project was built with Cursor.** Code quality is ensured by unit and integration tests, plus ongoing review and testing by the author.
+See the **Stack Card** table below. Built with Cursor; quality ensured by unit/integration tests and ongoing review.
 
 ### Validation Suite
 
-The test suite follows the structure described in [plans/comprehensive_pytest_test_suite_3c03307d.plan.md](plans/comprehensive_pytest_test_suite_3c03307d.plan.md). **Unit tests** (fast, run with `pytest -m "not slow"`) cover extraction (`tests/unit/test_extraction.py`—file-type routing, unsupported types, mocked extractors), storage (`tests/unit/test_storage.py`—ChatRepository, session isolation, add/get), the QA pipeline (`tests/unit/test_qa_pipeline.py`—empty context, `_normalize_context`, mocked HF client), the NER pipeline (`tests/unit/test_ner_pipeline.py`—entity extraction, chunking), and schemas (`tests/unit/test_schemas.py`—Pydantic validation). **Integration tests** exercise the API (`tests/integration/test_api.py`—health, chats CRUD, upload, add-urls, ask with mocked HF) and static serving (`tests/integration/test_static.py`). **Slow tests** (`@pytest.mark.slow`) require `HF_TOKEN` and `test_docs/`: `tests/integration/test_extraction_real.py` runs real PDF/OCR extraction, and `tests/integration/test_qa_real.py` runs real QA model inference.
-
-**Validation scripts** in [scripts/](scripts/)—`validate_storage.py`, `validate_extraction.py`, `validate_qa.py`, and `validate_all.py`—provide manual sanity checks. Run them after changes to storage, extraction, or QA logic. They complement pytest: pytest is automated regression; validation scripts are quick manual checks against real components. QA validation requires `HF_TOKEN`; storage and extraction run without it.
-
-**Fixtures** in [tests/conftest.py](tests/conftest.py) enable isolated tests. `chat_repo` provides a `ChatRepository` backed by a temp SQLite file. `client` yields a FastAPI `TestClient` with two overrides: `app.dependency_overrides[get_repo]` injects a fresh repo per test, and `get_hf_client` is patched so the QA and NER pipelines use a mock instead of the real Hugging Face API. Integration tests thus run without network or API credits. `sample_pdf_path` and `sample_pdf_bytes` supply test document data; tests skip if `test_docs/sample.pdf` is missing (generate with `scripts/generate_test_docs.py`).
+Test structure: [plans/comprehensive_pytest_test_suite_3c03307d.plan.md](plans/comprehensive_pytest_test_suite_3c03307d.plan.md). **Unit tests** (`pytest -m "not slow"`): extraction, storage, QA pipeline, NER pipeline, schemas. **Integration**: API (health, chats CRUD, upload, add-urls, ask with mocked HF) and static serving. **Slow tests** (`@pytest.mark.slow`): real PDF/OCR and QA inference—require `HF_TOKEN` and `test_docs/`. **Validation scripts** ([scripts/](scripts/)): `validate_storage.py`, `validate_extraction.py`, `validate_qa.py`, `validate_all.py`—manual sanity checks; QA needs `HF_TOKEN`. **Fixtures** ([tests/conftest.py](tests/conftest.py)): `chat_repo`, `client` (mocked HF), `sample_pdf_path`/`sample_pdf_bytes` (see Testing if missing).
 
 ### Development Phases
 
-The project began as a simple chat backend: a minimal FastAPI app with a health endpoint, config, and uv for dependencies (Phase 1). Document extraction followed (Phase 2)—PyMuPDF for PDFs, EasyOCR for images, a file-type router, and test documents. Phase 3 added an in-memory storage layer: SessionStore with add/get, session isolation, and SessionNotFoundError for unknown sessions. The QA pipeline (Phase 4) introduced local Hugging Face transformers: TinyBERT, lazy-loaded, with chunking for long context. Phase 5 wired everything into API endpoints: POST /upload (X-Session-ID header) and POST /ask (question + session_id in JSON).
-
-The next major shift was persistence. The [chat persistence plan](plans/chat_persistence_and_history_0d3716ef.plan.md) replaced in-memory storage with SQLite via aiosqlite. Chats, documents, and messages gained UUIDs; the API was redesigned around GET/POST/PATCH /chats, upload, add-urls, and ask with document_ids and model_id. The frontend started as a barebones "new chat + upload files" UI and evolved into multi-chat, chat history, a QA model dropdown, document toggles in the Containing tab, and URL ingestion.
-
-Initially, models were hosted locally—transformers pipelines and EasyOCR preloaded at Docker build. The [HF Inference API migration](plans/hf_inference_api_migration_30509893.plan.md) switched QA (and later NER) to the Hugging Face Inference API: serverless, no local model load, faster startup, simpler Docker. The [NER document overview](plans/ner_document_overview_cd6b0b50.plan.md) added entity extraction at upload time and display in the Containing panel. The [comprehensive pytest suite](plans/comprehensive_pytest_test_suite_3c03307d.plan.md) established unit tests (extraction, storage, QA, NER, schemas), integration tests (API, static), and slow tests (real extraction, real QA).
+Phases 1–6: scaffold → extraction → storage → QA pipeline → API endpoints → Docker. Then: [chat persistence](plans/chat_persistence_and_history_0d3716ef.plan.md) (SQLite, new API), [HF Inference migration](plans/hf_inference_api_migration_30509893.plan.md), [NER overview](plans/ner_document_overview_cd6b0b50.plan.md), [pytest suite](plans/comprehensive_pytest_test_suite_3c03307d.plan.md).
 
 | Phase | Scope | Plan |
 |-------|-------|------|
@@ -204,7 +194,7 @@ Initially, models were hosted locally—transformers pipelines and EasyOCR prelo
 
 ### Inference and Models
 
-The Hugging Face Inference API client uses a **120-second timeout**. This constraint is a primary factor for design choices: document chunking, model selection (e.g. TinyBERT vs BERT Large), and context length limits are tuned to stay within it. See [benchmark/README.md](benchmark/README.md) for Model Latency Profiling.
+The Hugging Face Inference API enforces a **120-second timeout** per request. Document chunking, model selection, and context limits are tuned to stay within it. See [benchmark/README.md](benchmark/README.md) for latency profiling and how to run the benchmark.
 
 | Model | Weights | Task | Description |
 |-------|---------|------|--------------|
@@ -218,17 +208,13 @@ The Hugging Face Inference API client uses a **120-second timeout**. This constr
 
 #### Model Latency Profile
 
-The Hugging Face Inference API enforces a **120-second timeout** per request. To inform model selection and document chunking, we benchmark QA inference times across documents of varying length. The chart below plots average inference time (seconds) vs document length (characters) for each QA model.
+We benchmark QA inference times across documents of varying length. The chart below plots average inference time (seconds) vs document length (characters) for each QA model.
 
 ![QA model inference time vs document length](benchmark/inference_histogram.png)
 
-**Low-latency models** (TinyBERT, DeBERTa v3 base, ELECTRA base) stay consistently under ~5 seconds across all document lengths tested (12.5k–45k characters). They are suitable for real-time use with minimal latency impact.
+**Low-latency models** (TinyBERT, DeBERTa v3 base, ELECTRA base) stay under ~5 seconds across 12.5k–45k characters. **RoBERTa large** scales with length—~7s at 13k to ~60s+ at 45k—best for shorter docs or when accuracy justifies the wait. The red dashed line marks the 120s limit; models approaching it risk timeouts.
 
-**RoBERTa large** shows a clear trade-off: inference time scales with document length—from ~7s at 13k characters to ~60s+ at 45k characters. It remains within the 120s timeout but is best reserved for shorter documents or when maximum accuracy justifies the wait.
-
-Note: The models in use are public-access; therefore it is not always likely that our benchmark provides an exact result all-round, the latency varies with availiability of compute resources - hinging on whether the model in question is under high-load by other users of the HF Inference platform. One can observe a high or low latency on high parameter or low parameter models, making it somewhat unintuitive as compared to self-hosting, where one observes latency as a function of number of parameters.
-
-The 120-second threshold (red dashed line) is the critical limit; models approaching it risk timeouts. Run the benchmark yourself with `uv run python benchmark/run_benchmark.py` (see [benchmark/README.md](benchmark/README.md)).
+Note: The models in use are public-access; therefore it is not always likely that our benchmark provides an exact result all-round—latency varies with availability of compute resources, hinging on whether the model is under high load by other users of the HF Inference platform. One can observe high or low latency on high- or low-parameter models, making it somewhat unintuitive compared to self-hosting, where latency is a function of parameter count.
 
 ---
 
