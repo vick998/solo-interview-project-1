@@ -73,5 +73,11 @@ async def init_db(db_path: str | None = None) -> None:
             await conn.commit()
         except Exception:
             pass  # Column already exists
+        # Migration: add entities to existing documents tables
+        try:
+            await conn.execute("ALTER TABLE documents ADD COLUMN entities TEXT")
+            await conn.commit()
+        except Exception:
+            pass  # Column already exists
     finally:
         await conn.close()

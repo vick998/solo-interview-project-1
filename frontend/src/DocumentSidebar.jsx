@@ -1,5 +1,50 @@
 import { ChevronDown } from "lucide-react";
 
+const ENTITY_LABELS = {
+  PER: "People",
+  ORG: "Orgs",
+  LOC: "Locations",
+  MISC: "Other",
+};
+const ENTITY_CAP = 5;
+
+function EntityOverview({ entities }) {
+  if (entities == null || typeof entities !== "object") {
+    return (
+      <div className="doc-card-ner doc-card-ner-processing">
+        <span className="doc-card-ner-spinner" aria-hidden />
+        Processing entities…
+      </div>
+    );
+  }
+  const entries = Object.entries(entities).filter(([, list]) => Array.isArray(list) && list.length > 0);
+  if (entries.length === 0) return <div className="doc-card-ner-empty">No entities extracted</div>;
+  return (
+    <div className="doc-card-ner">
+      {entries.flatMap(([type, list]) => {
+        const label = ENTITY_LABELS[type] ?? type;
+        const shown = list.slice(0, ENTITY_CAP);
+        const rest = list.length - ENTITY_CAP;
+        return [
+          ...shown.map((entry, i) => (
+            <div key={`${type}-${i}`} className="doc-card-ner-row">
+              <span className={`doc-card-ner-badge doc-card-ner-badge--${type}`}>{label}</span>
+              <span className="doc-card-ner-entry"> – {entry}</span>
+            </div>
+          )),
+          ...(rest > 0
+            ? [
+                <div key={`${type}-more`} className="doc-card-ner-row doc-card-ner-more">
+                  +{rest} more
+                </div>,
+              ]
+            : []),
+        ];
+      })}
+    </div>
+  );
+}
+
 export function DocumentSidebar({
   models,
   selectedModel,
@@ -56,9 +101,7 @@ export function DocumentSidebar({
                   <ChevronDown size={16} />
                 </button>
               </div>
-              {expandedDocId === d.id && (
-                <div className="doc-card-ner">NER characteristics (coming soon)</div>
-              )}
+              {expandedDocId === d.id && <EntityOverview entities={d.entities} />}
             </div>
           ))}
         </div>

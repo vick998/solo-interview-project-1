@@ -36,7 +36,7 @@ def test_answer_with_mocked_client() -> None:
     mock_result = [{"answer": "March 15, 2025", "score": 0.9}]
     mock_client = MagicMock()
     mock_client.question_answering.return_value = mock_result
-    with patch("app.qa.pipeline._get_client", return_value=mock_client):
+    with patch("app.qa.pipeline.get_hf_client", return_value=mock_client):
         result = answer("When does the contract expire?", "The contract expires March 15.")
         assert result == "March 15, 2025"
         mock_client.question_answering.assert_called_once()
@@ -47,7 +47,7 @@ def test_answer_with_history_includes_history_in_context() -> None:
     mock_result = [{"answer": "Paris"}]
     mock_client = MagicMock()
     mock_client.question_answering.return_value = mock_result
-    with patch("app.qa.pipeline._get_client", return_value=mock_client):
+    with patch("app.qa.pipeline.get_hf_client", return_value=mock_client):
         result = answer_with_history(
             "What is its capital?",
             "France is a country.",

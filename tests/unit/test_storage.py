@@ -57,6 +57,30 @@ async def test_add_documents_returns_ids(repo: ChatRepository) -> None:
 
 
 @pytest.mark.asyncio
+async def test_add_documents_with_entities_stores_and_retrieves(repo: ChatRepository) -> None:
+    """add_documents with entities stores them; get_documents returns entities."""
+    await repo.ensure_init()
+    chat_id = await repo.create_chat()
+    entities = {"PER": ["John Smith"], "ORG": ["Acme Corp"]}
+    await repo.add_documents(
+        chat_id,
+        [
+            {
+                "source_type": "file",
+                "source_path_or_url": "report.pdf",
+                "display_name": "report.pdf",
+                "extracted_text": "John Smith works at Acme Corp.",
+                "enabled": True,
+                "entities": entities,
+            }
+        ],
+    )
+    docs = await repo.get_documents(chat_id)
+    assert len(docs) == 1
+    assert docs[0]["entities"] == entities
+
+
+@pytest.mark.asyncio
 async def test_get_documents_returns_added(repo: ChatRepository) -> None:
     """get_documents returns added documents."""
     await repo.ensure_init()

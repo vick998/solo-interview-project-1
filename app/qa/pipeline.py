@@ -1,13 +1,12 @@
 """QA pipeline using Hugging Face Inference API."""
 
 import logging
-import os
 import time
 
-from huggingface_hub import InferenceClient
 from huggingface_hub.utils import HfHubHTTPError
 
 from app.config import QA_DEFAULT_MODEL, QA_MODELS
+from app.hf_client import get_hf_client
 
 logger = logging.getLogger(__name__)
 EMPTY_CONTEXT_FALLBACK = "No context provided."
@@ -15,24 +14,6 @@ EMPTY_CONTEXT_FALLBACK = "No context provided."
 # Retry config for transient 503/504 from serverless inference (cold start, overload)
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 2  # seconds
-# HF router times out at ~2 min; use shorter client timeout to fail fast with InferenceTimeoutError
-# instead of waiting for server 504. Increase if cold starts are consistently slower.
-INFERENCE_TIMEOUT = 120  # seconds
-
-
-def _get_client() -> InferenceClient:
-    """Return InferenceClient for HF Inference API."""
-    token = os.environ.get("HF_TOKEN")
-    if not token or not token.strip():
-        raise ValueError(
-            "HF_TOKEN environment variable is required for QA. "
-            "Set it in .env or pass -e HF_TOKEN=... when running."
-        )
-    return InferenceClient(
-        provider="hf-inference",
-        api_key=token,
-        timeout=INFERENCE_TIMEOUT,
-    )
 
 
 def _normalize_context(context: str | list[str]) -> str:
@@ -92,7 +73,7 @@ def answer_with_history(
         len(question),
     )
 
-    client = _get_client()
+    client = get_hf_client()
     for attempt in range(MAX_RETRIES):
         try:
             result = client.question_answering(

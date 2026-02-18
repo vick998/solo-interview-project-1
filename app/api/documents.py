@@ -1,10 +1,12 @@
 """Document upload and management endpoints."""
 
+import asyncio
+import logging
 import os
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 
 from app.api.deps import get_repo
 from app.api.schemas import (
@@ -16,11 +18,28 @@ from app.api.schemas import (
 from app.extraction.exceptions import ExtractionError, UnsupportedFileTypeError
 from app.extraction.extractor import IMAGE_EXTENSIONS, PDF_EXTENSIONS, extract_text
 from app.extraction.url import download_from_url
+from app.ner import extract_entities
 from app.storage.chat_repository import ChatRepository
 from app.storage.exceptions import ChatNotFoundError
 
 router = APIRouter()
 ALLOWED_EXTENSIONS = PDF_EXTENSIONS | IMAGE_EXTENSIONS
+logger = logging.getLogger(__name__)
+
+
+async def _run_ner_and_update(
+    repo: ChatRepository,
+    chat_id: str,
+    doc_id: str,
+    text: str,
+) -> None:
+    """Background task: run NER and update document entities."""
+    try:
+        entities = await asyncio.to_thread(extract_entities, text)
+        if entities is not None:
+            await repo.update_document_entities(chat_id, doc_id, entities)
+    except Exception as e:
+        logger.warning("ner_background_failed chat_id=%s doc_id=%s error=%s", chat_id, doc_id, e)
 
 
 def _validate_file_extension(filename: str) -> None:
@@ -36,8 +55,9 @@ def _validate_file_extension(filename: str) -> None:
 @router.post("/{chat_id}/upload", response_model=UploadResponse)
 async def upload(
     chat_id: str,
-    files: list[UploadFile] = File(...),
+    background_tasks: BackgroundTasks,
     repo: ChatRepository = Depends(get_repo),
+    files: list[UploadFile] = File(...),
 ) -> UploadResponse:
     """Upload files to a chat. Partial success: returns document_ids and failed list."""
     await repo.ensure_init()
@@ -74,6 +94,7 @@ async def upload(
         try:
             text = extract_text(tmp_path)
             if text and text.strip():
+                stripped = text.strip()
                 docs = await repo.add_documents(
                     chat_id,
                     [
@@ -81,12 +102,21 @@ async def upload(
                             "source_type": "file",
                             "source_path_or_url": upload_file.filename,
                             "display_name": upload_file.filename,
-                            "extracted_text": text.strip(),
+                            "extracted_text": stripped,
                             "enabled": True,
+                            "entities": None,
                         }
                     ],
                 )
                 document_ids.extend(docs)
+                for doc_id in docs:
+                    background_tasks.add_task(
+                        _run_ner_and_update,
+                        repo,
+                        chat_id,
+                        doc_id,
+                        stripped,
+                    )
         except (ExtractionError, UnsupportedFileTypeError) as e:
             failed.append({"filename_or_url": upload_file.filename, "error": str(e)})
         finally:
@@ -103,6 +133,7 @@ async def upload(
 async def add_urls(
     chat_id: str,
     request: AddUrlsRequest,
+    background_tasks: BackgroundTasks,
     repo: ChatRepository = Depends(get_repo),
 ) -> AddUrlsResponse:
     """Add documents from URLs. Partial success: returns document_ids and failed list."""
@@ -122,6 +153,7 @@ async def add_urls(
             try:
                 text = extract_text(tmp_path)
                 if text and text.strip():
+                    stripped = text.strip()
                     docs = await repo.add_documents(
                         chat_id,
                         [
@@ -129,12 +161,21 @@ async def add_urls(
                                 "source_type": "url",
                                 "source_path_or_url": url,
                                 "display_name": display_name,
-                                "extracted_text": text.strip(),
+                                "extracted_text": stripped,
                                 "enabled": True,
+                                "entities": None,
                             }
                         ],
                     )
                     document_ids.extend(docs)
+                    for doc_id in docs:
+                        background_tasks.add_task(
+                            _run_ner_and_update,
+                            repo,
+                            chat_id,
+                            doc_id,
+                            stripped,
+                        )
             finally:
                 if os.path.exists(tmp_path):
                     os.unlink(tmp_path)

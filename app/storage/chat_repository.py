@@ -1,5 +1,6 @@
 """SQLite-backed chat repository."""
 
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -107,11 +108,14 @@ class ChatRepository:
             for doc in documents:
                 doc_id = _uuid()
                 doc_ids.append(doc_id)
+                entities_json = (
+                    json.dumps(doc["entities"]) if doc.get("entities") is not None else None
+                )
                 await conn.execute(
                     """INSERT INTO documents
                        (id, chat_id, source_type, source_path_or_url, display_name,
-                        extracted_text, enabled, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        extracted_text, enabled, created_at, entities)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         doc_id,
                         chat_id,
@@ -121,6 +125,7 @@ class ChatRepository:
                         doc["extracted_text"],
                         1 if doc.get("enabled", True) else 0,
                         _now(),
+                        entities_json,
                     ),
                 )
             await conn.execute(
@@ -144,26 +149,29 @@ class ChatRepository:
             if document_ids:
                 placeholders = ",".join("?" * len(document_ids))
                 sql = f"""SELECT id, chat_id, source_type, source_path_or_url, display_name,
-                         extracted_text, enabled, created_at
+                         extracted_text, enabled, created_at, entities
                          FROM documents WHERE chat_id = ? AND id IN ({placeholders})"""
                 cursor = await conn.execute(sql, [chat_id, *document_ids])
             elif enabled_only:
                 cursor = await conn.execute(
                     """SELECT id, chat_id, source_type, source_path_or_url, display_name,
-                       extracted_text, enabled, created_at
+                       extracted_text, enabled, created_at, entities
                        FROM documents WHERE chat_id = ? AND enabled = 1""",
                     (chat_id,),
                 )
             else:
                 cursor = await conn.execute(
                     """SELECT id, chat_id, source_type, source_path_or_url, display_name,
-                       extracted_text, enabled, created_at
+                       extracted_text, enabled, created_at, entities
                        FROM documents WHERE chat_id = ?""",
                     (chat_id,),
                 )
             rows = await cursor.fetchall()
-            return [
-                {
+            result = []
+            for r in rows:
+                entities_val = r[8] if len(r) > 8 else None
+                entities_parsed = json.loads(entities_val) if entities_val else None
+                result.append({
                     "id": r[0],
                     "chat_id": r[1],
                     "source_type": r[2],
@@ -172,9 +180,9 @@ class ChatRepository:
                     "extracted_text": r[5],
                     "enabled": bool(r[6]),
                     "created_at": r[7],
-                }
-                for r in rows
-            ]
+                    "entities": entities_parsed,
+                })
+            return result
         finally:
             await conn.close()
 
@@ -194,6 +202,24 @@ class ChatRepository:
             await conn.commit()
             if cursor.rowcount == 0:
                 raise ChatNotFoundError(f"Document not found: {document_id}")
+        finally:
+            await conn.close()
+
+    async def update_document_entities(
+        self,
+        chat_id: str,
+        document_id: str,
+        entities: dict[str, list[str]] | None,
+    ) -> None:
+        """Update document entities. Silently no-op if doc not found."""
+        conn = await self._conn()
+        try:
+            entities_json = json.dumps(entities) if entities is not None else None
+            await conn.execute(
+                "UPDATE documents SET entities = ? WHERE chat_id = ? AND id = ?",
+                (entities_json, chat_id, document_id),
+            )
+            await conn.commit()
         finally:
             await conn.close()
 

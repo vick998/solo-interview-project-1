@@ -22,7 +22,7 @@ def client_no_static() -> TestClient:
     app.dependency_overrides[get_repo] = lambda: repo
     mock_hf = MagicMock()
     mock_hf.question_answering.return_value = [{"answer": "ok", "score": 0.9}]
-    with patch("app.qa.pipeline._get_client", return_value=mock_hf):
+    with patch("app.qa.pipeline.get_hf_client", return_value=mock_hf):
         try:
             yield TestClient(app)
         finally:

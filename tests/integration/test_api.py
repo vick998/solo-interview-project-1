@@ -68,6 +68,23 @@ def test_upload_valid_pdf_returns_200(
     assert len(data["document_ids"]) >= 1
 
 
+def test_upload_ner_runs_in_background(
+    client: TestClient, chat_repo, sample_pdf_bytes: bytes
+) -> None:
+    """Upload returns immediately; NER runs in background and populates entities."""
+    create = client.post("/chats", json={})
+    chat_id = create.json()["id"]
+    client.post(
+        f"/chats/{chat_id}/upload",
+        files=[("files", ("sample.pdf", sample_pdf_bytes, "application/pdf"))],
+    )
+    # Background task runs after response; TestClient runs it before returning
+    chat = client.get(f"/chats/{chat_id}").json()
+    assert len(chat["documents"]) >= 1
+    # entities may be {} (mock returns empty) or populated
+    assert "entities" in chat["documents"][0]
+
+
 def test_ask_unknown_chat_returns_404(client: TestClient) -> None:
     """POST /chats/{id}/ask with unknown chat returns 404."""
     response = client.post(

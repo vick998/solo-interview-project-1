@@ -1,5 +1,5 @@
 [project]
-name = "abysalto-interview-project"
+name = "solo-interview-project-1"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -16,6 +16,7 @@ dependencies = [
     "torchvision>=0.25.0",
     "transformers>=5.2.0",
     "uvicorn[standard]>=0.40.0",
+    "matplotlib>=3.10.8",
 ]
 
 [tool.uv.sources]

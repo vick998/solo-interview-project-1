@@ -611,6 +611,85 @@ body {
   color: var(--text-secondary);
 }
 
+.doc-card-ner-row {
+  margin-bottom: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.doc-card-ner-row:last-child {
+  margin-bottom: 0;
+}
+
+.doc-card-ner-badge {
+  font-weight: 700;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: white;
+  flex-shrink: 0;
+  background: #455a64;
+}
+
+.doc-card-ner-badge--PER {
+  background: #1565c0;
+}
+
+.doc-card-ner-badge--ORG {
+  background: #2e7d32;
+}
+
+.doc-card-ner-badge--LOC {
+  background: #e65100;
+}
+
+.doc-card-ner-badge--MISC {
+  background: #6a1b9a;
+}
+
+.doc-card-ner-entry {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.doc-card-ner-row.doc-card-ner-more {
+  font-size: 0.7rem;
+  opacity: 0.8;
+  font-style: italic;
+}
+
+.doc-card-ner-empty {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.doc-card-ner-processing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.doc-card-ner-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--text-secondary);
+  border-radius: 50%;
+  animation: doc-card-ner-spin 0.8s linear infinite;
+}
+
+@keyframes doc-card-ner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Toast */
 .toast {
   position: fixed;

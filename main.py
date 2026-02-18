@@ -1,5 +1,5 @@
 def main():
-    print("Hello from abysalto-interview-project!")
+    print("Hello from solo-interview-project-1!")
 
 
 if __name__ == "__main__":

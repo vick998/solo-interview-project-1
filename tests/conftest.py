@@ -35,8 +35,12 @@ def client(chat_repo: ChatRepository) -> TestClient:
     mock_hf_client.question_answering.return_value = [
         {"answer": "expected keyword", "score": 0.9}
     ]
+    mock_hf_client.token_classification.return_value = []
     app.dependency_overrides[get_repo] = lambda: chat_repo
-    with patch("app.qa.pipeline._get_client", return_value=mock_hf_client):
+    with (
+        patch("app.qa.pipeline.get_hf_client", return_value=mock_hf_client),
+        patch("app.ner.pipeline.get_hf_client", return_value=mock_hf_client),
+    ):
         try:
             yield TestClient(app)
         finally:
